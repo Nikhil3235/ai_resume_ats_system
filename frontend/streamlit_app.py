@@ -149,7 +149,9 @@ with st.sidebar:
         st.markdown("<div style='text-align:center; margin: 8px 0; color:#94a3b8;'>or</div>",
                     unsafe_allow_html=True)
 
-        oauth = supabase_client.google_oauth_url()
+        if "google_oauth_cache" not in st.session_state:
+            st.session_state.google_oauth_cache = supabase_client.google_oauth_url()
+        oauth = st.session_state.google_oauth_cache
         if "error" in oauth:
             st.caption(f"Google sign-in unavailable: {oauth['error']}")
         else:

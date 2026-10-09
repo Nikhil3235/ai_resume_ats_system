@@ -31,14 +31,60 @@ def _secret(key: str, section: str = 'supabase') -> str:
     return ''
 
 
+import tempfile
+
+_CACHE_FILE = Path(tempfile.gettempdir()) / 'ats_pkce_verifiers.txt'
+_IN_MEMORY_VERIFIERS: list[str] = []
+
+def _save_verifier(v: str) -> None:
+    if not v:
+        return
+    if v not in _IN_MEMORY_VERIFIERS:
+        _IN_MEMORY_VERIFIERS.append(v)
+    try:
+        with open(_CACHE_FILE, 'a', encoding='utf-8') as f:
+            f.write(v + '\n')
+    except Exception:
+        pass
+
+def _get_all_verifiers() -> list[str]:
+    results = list(_IN_MEMORY_VERIFIERS)
+    try:
+        if _CACHE_FILE.exists():
+            with open(_CACHE_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    item = line.strip()
+                    if item and item not in results:
+                        results.append(item)
+    except Exception:
+        pass
+    return list(reversed(results[-30:]))
+
+
 SUPABASE_URL = _secret('SUPABASE_URL')
 SUPABASE_ANON_KEY = _secret('SUPABASE_ANON_KEY')
 
-OAUTH_REDIRECT_URL = (
-    os.getenv('AUTH_REDIRECT_URL')
-    or _secret('redirect_uri', 'google_oauth')
-    or 'http://localhost:8501'
-)
+
+def get_oauth_redirect_url() -> str:
+    """Dynamically determine current app URL to prevent redirecting cloud traffic to localhost."""
+    explicit = os.getenv('AUTH_REDIRECT_URL') or _secret('AUTH_REDIRECT_URL') or _secret('redirect_uri', 'google_oauth')
+    if explicit:
+        return explicit.rstrip('/')
+
+    try:
+        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
+            headers = st.context.headers
+            host = headers.get('x-forwarded-host') or headers.get('host')
+            if host:
+                proto = headers.get('x-forwarded-proto') or ('https' if 'streamlit.app' in host else 'http')
+                return f"{proto}://{host}".rstrip('/')
+    except Exception:
+        pass
+
+    return 'http://localhost:8501'
+
+
+OAUTH_REDIRECT_URL = get_oauth_redirect_url()
 
 
 def _missing_config() -> str | None:
@@ -105,11 +151,17 @@ def google_oauth_url() -> Dict[str, Any]:
     if err:
         return {'error': err}
     try:
-        resp = get_client().auth.sign_in_with_oauth({
+        redirect_to = get_oauth_redirect_url()
+        client = get_client()
+        resp = client.auth.sign_in_with_oauth({
             'provider': 'google',
-            'options': {'redirect_to': OAUTH_REDIRECT_URL},
+            'options': {'redirect_to': redirect_to},
         })
-        return {'url': resp.url}
+        storage_key = f'{client.auth._storage_key}-code-verifier'
+        verifier = client.auth._storage.get_item(storage_key) or ''
+        if verifier:
+            _save_verifier(verifier)
+        return {'url': resp.url, 'verifier': verifier}
     except Exception as exc:
         logger.warning(f'oauth url generation failed: {exc}')
         return {'error': _humanize(exc)}
@@ -121,20 +173,34 @@ def exchange_code_for_session(auth_code: str) -> Dict[str, Any]:
     if err:
         return {'error': err}
     client = get_client()
-    try:
-        storage_key = f'{client.auth._storage_key}-code-verifier'
-        code_verifier = client.auth._storage.get_item(storage_key) or ''
-        resp = client.auth.exchange_code_for_session({
-            'auth_code': auth_code,
-            'code_verifier': code_verifier,
-            'redirect_to': OAUTH_REDIRECT_URL,
-        })
-        if not resp.session or not resp.user:
-            return {'error': 'OAuth exchange returned no session'}
-        return _session_dict(resp.session, resp.user)
-    except Exception as exc:
-        logger.warning(f'exchange_code_for_session failed: {exc}')
-        return {'error': _humanize(exc)}
+    redirect_to = get_oauth_redirect_url()
+
+    storage_key = f'{client.auth._storage_key}-code-verifier'
+    current_v = client.auth._storage.get_item(storage_key) or ''
+
+    candidates = []
+    if current_v:
+        candidates.append(current_v)
+    for v in _get_all_verifiers():
+        if v not in candidates:
+            candidates.append(v)
+
+    last_err = None
+    for code_verifier in candidates:
+        try:
+            resp = client.auth.exchange_code_for_session({
+                'auth_code': auth_code,
+                'code_verifier': code_verifier,
+                'redirect_to': redirect_to,
+            })
+            if resp.session and resp.user:
+                return _session_dict(resp.session, resp.user)
+        except Exception as exc:
+            last_err = exc
+            continue
+
+    logger.warning(f'exchange_code_for_session failed across all candidates: {last_err}')
+    return {'error': _humanize(last_err or Exception('PKCE verification failed'))}
 
 
 def sign_out() -> None:
