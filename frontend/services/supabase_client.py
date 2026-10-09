@@ -81,7 +81,7 @@ def get_oauth_redirect_url() -> str:
     except Exception:
         pass
 
-    return 'http://localhost:8501'
+    return 'https://ai-resume-ats-system-nikhil.streamlit.app'
 
 
 OAUTH_REDIRECT_URL = get_oauth_redirect_url()
