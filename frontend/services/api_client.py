@@ -1,17 +1,29 @@
+import os
 from typing import Any, Dict, List
 
 import requests
 import streamlit as st
 
 
-DEFAULT_BACKEND_URL = "http://localhost:8000"
+DEFAULT_BACKEND_URL = "https://ai-resume-ats-backend-ko4r.onrender.com"
 
 
 def _backend_url() -> str:
+    # 1. Environment variable
+    env_url = os.getenv("API_BASE_URL")
+    if env_url:
+        return env_url.rstrip("/")
+    # 2. Streamlit secrets
     try:
-        return st.secrets["backend"]["url"]
-    except (KeyError, FileNotFoundError):
-        return DEFAULT_BACKEND_URL
+        if hasattr(st, "secrets"):
+            if "API_BASE_URL" in st.secrets:
+                return str(st.secrets["API_BASE_URL"]).rstrip("/")
+            if "backend" in st.secrets and "url" in st.secrets["backend"]:
+                return str(st.secrets["backend"]["url"]).rstrip("/")
+    except Exception:
+        pass
+    # 3. Default production URL
+    return DEFAULT_BACKEND_URL
 
 
 def _auth_headers(access_token: str) -> Dict[str, str]:

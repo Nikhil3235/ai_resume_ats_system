@@ -16,14 +16,19 @@ except ImportError:
 
 
 def _secret(key: str, section: str = 'supabase') -> str:
-    """Read from env first, then fall back to st.secrets[section][key]."""
+    """Read from env first, then st.secrets[key], then st.secrets[section][key]."""
     val = os.getenv(key, '')
     if val:
         return val
     try:
-        return st.secrets[section][key]
-    except (KeyError, FileNotFoundError, AttributeError):
-        return ''
+        if hasattr(st, 'secrets'):
+            if key in st.secrets:
+                return str(st.secrets[key])
+            if section in st.secrets and key in st.secrets[section]:
+                return str(st.secrets[section][key])
+    except Exception:
+        pass
+    return ''
 
 
 SUPABASE_URL = _secret('SUPABASE_URL')
