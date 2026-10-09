@@ -1,6 +1,5 @@
 import spacy
-from sentence_transformers import SentenceTransformer
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from backend.models.schemas import IssueDetail
 from backend.services.groq_parser import parse_resume, parse_job_description
 from backend.services.jd_matcher import compare_resume_with_jd
@@ -11,7 +10,7 @@ from backend.services.ats_scorer import calculate_overall_score, validate_skills
 def analyze_full_resume(
     resume_text: str,
     nlp: spacy.Language,
-    embedder: SentenceTransformer,
+    embedder: Any,
     job_description: Optional[str] = None,
 ) -> Dict:
     import logging

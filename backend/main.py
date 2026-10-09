@@ -34,9 +34,8 @@ class AppState:
     @property
     def embedder(self):
         if self._embedder is None:
-            from sentence_transformers import SentenceTransformer
-            from backend.core.config import SENTENCE_TRANSFORMER_MODEL
-            self._embedder = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL)
+            from backend.services.embedder import get_embedder
+            self._embedder = get_embedder()
         return self._embedder
 
 lazy_state = AppState()
