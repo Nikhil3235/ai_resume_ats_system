@@ -11,7 +11,7 @@ st.set_page_config(
     page_title="ATS Resume Scorer",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 # Auth state. Populated by Supabase sign-in / sign-up / OAuth.

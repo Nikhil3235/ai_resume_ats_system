@@ -25,17 +25,27 @@ ALLOWED_ORIGINS = [
 ]  
 
 #file 
-MAX_FILE_SIZE_MB=5
-MAX_FILE_SIZE_BYTES=MAX_FILE_SIZE_MB*1024*1024
+MAX_FILE_SIZE_MB = 25
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
-#Supported MIME types and their short names
+# Supported MIME types and their short names (including mobile Android/iOS representations)
 SUPPORTED_MIME_TYPES = {
     'application/pdf': 'pdf',
+    'application/x-pdf': 'pdf',
+    'application/acrobat': 'pdf',
+    'applications/vnd.pdf': 'pdf',
+    'text/pdf': 'pdf',
+    'text/x-pdf': 'pdf',
+    'application/octet-stream': 'pdf',
+    'binary/octet-stream': 'pdf',
     'application/msword': 'doc',
+    'application/vnd.ms-word': 'doc',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/docx': 'docx',
+    'application/zip': 'docx',
 }
 
-SUPPORTED_EXTENSIONS = {'.pdf', '.doc', '.docx'}
+SUPPORTED_EXTENSIONS = {'.pdf', '.doc', '.docx', '.PDF', '.DOC', '.DOCX'}
 
 SPACY_MODEL_PRIMARY = "en_core_web_sm"
 SPACY_MODEL_SECONDARY = "en_core_web_sm" 

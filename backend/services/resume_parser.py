@@ -32,7 +32,7 @@ class FileParsingError(Exception):
 class FileValidationError(Exception):
     pass
 
-def validate_file(file_data:bytes, filename:str)->Tuple[bool, str, Optional[str]]:
+def validate_file(file_data: bytes, filename: str) -> Tuple[bool, str, Optional[str]]:
     file_size_bytes = len(file_data)
     if file_size_bytes > MAX_FILE_SIZE_BYTES:
         size_mb = file_size_bytes / (1024 * 1024)
@@ -40,30 +40,50 @@ def validate_file(file_data:bytes, filename:str)->Tuple[bool, str, Optional[str]
             f'File size ({size_mb:.2f} MB) exceeds the maximum of {MAX_FILE_SIZE_MB} MB. '
             'Please upload a smaller file or compress your resume.'
         ), None
-    
-    if file_size_bytes==0:
-        return False, 'uploade file is empty...please check the file you have uploaded and try again'
-    
-    mime_type = None
-    if magic:
-        try:
-            mime_type = magic.from_buffer(file_data, mime=True)
-        except Exception:
-            pass
-    if not mime_type:
-        guessed, _ = mimetypes.guess_type(filename)
-        mime_type = guessed or ('application/pdf' if filename.lower().endswith('.pdf') else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' if filename.lower().endswith('.docx') else 'application/msword')
-    
-    if mime_type not in SUPPORTED_MIME_TYPES:
-        supported=', '.join(SUPPORTED_MIME_TYPES.keys()).upper()
-        return False, (
-            f'Unsupported file type: {mime_type}. '
-            f'Please upload one of: {supported}.'
-        ), None
-    
-    
 
-    return True, '', SUPPORTED_MIME_TYPES[mime_type]
+    if file_size_bytes == 0:
+        return False, 'Uploaded file is empty. Please check the file and try again.', None
+
+    # Step 1: Check magic bytes directly (foolproof across Android, iOS, Windows, Mac)
+    short_type = None
+    if file_data.startswith(b'%PDF'):
+        short_type = 'pdf'
+    elif file_data.startswith(b'PK\x03\x04'):
+        short_type = 'docx'
+    elif file_data.startswith(b'\xd0\xcf\x11\xe0'):
+        short_type = 'doc'
+
+    # Step 2: Check filename extension (case-insensitive)
+    if not short_type:
+        fname_lower = (filename or '').lower()
+        if fname_lower.endswith('.pdf'):
+            short_type = 'pdf'
+        elif fname_lower.endswith('.docx'):
+            short_type = 'docx'
+        elif fname_lower.endswith('.doc'):
+            short_type = 'doc'
+
+    # Step 3: Check MIME types if magic bytes and extension didn't resolve
+    if not short_type:
+        mime_type = None
+        if magic:
+            try:
+                mime_type = magic.from_buffer(file_data, mime=True)
+            except Exception:
+                pass
+        if not mime_type:
+            guessed, _ = mimetypes.guess_type(filename)
+            mime_type = guessed or 'application/octet-stream'
+
+        short_type = SUPPORTED_MIME_TYPES.get(mime_type)
+
+    if not short_type:
+        return False, (
+            f'Unsupported file format for "{filename}". '
+            'Please upload a valid PDF or Word (.docx) document.'
+        ), None
+
+    return True, '', short_type
 
 def _extract_pdf_hyperlinks(file_data: bytes) -> str:
     urls = []

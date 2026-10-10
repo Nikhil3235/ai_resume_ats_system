@@ -41,8 +41,23 @@ def analyze_resume(
     access_token: str,
     job_description: str = "",
 ) -> Dict[str, Any]:
+    filename = getattr(resume_file, "name", "resume.pdf") or "resume.pdf"
+    content_type = getattr(resume_file, "type", "") or ""
+
+    # Normalize content-type for mobile Android/iOS uploaders
+    if not content_type or content_type in ("application/octet-stream", "binary/octet-stream"):
+        fname_lower = filename.lower()
+        if fname_lower.endswith(".pdf"):
+            content_type = "application/pdf"
+        elif fname_lower.endswith(".docx"):
+            content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        elif fname_lower.endswith(".doc"):
+            content_type = "application/msword"
+        else:
+            content_type = "application/pdf"
+
     files = {
-        "resume": (resume_file.name, resume_file.getvalue(), resume_file.type),
+        "resume": (filename, resume_file.getvalue(), content_type),
     }
     data = {"job_description": job_description}
     response = requests.post(

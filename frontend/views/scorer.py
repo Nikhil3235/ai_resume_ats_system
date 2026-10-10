@@ -64,25 +64,24 @@ def _summary_text(analysis: dict) -> str:
 
 
 def _render_upload_area(analysis_mode: str):
-    """Two-column upload widgets. Returns (resume_file, jd_file, jd_text)."""
-    left, right = st.columns(2)
-
-    with left:
-        st.markdown("### 📄 Upload Resume")
-        resume_file = st.file_uploader(
-            "Choose your resume file",
-            type=["pdf", "doc", "docx"],
-            help="Supported: PDF, DOC, DOCX (max 5 MB)",
-            key="resume_upload",
-        )
-        if resume_file:
-            st.success(f"✅ {resume_file.name} ({resume_file.size / 1024:.1f} KB)")
-
+    """Responsive upload widgets. Returns (resume_file, jd_file, jd_text)."""
     jd_file: Optional[object] = None
     jd_text = ""
 
-    with right:
-        if analysis_mode == "Job Description Comparison":
+    if analysis_mode == "Job Description Comparison":
+        left, right = st.columns(2)
+        with left:
+            st.markdown("### 📄 Upload Resume")
+            resume_file = st.file_uploader(
+                "Choose your resume file",
+                type=["pdf", "doc", "docx", "PDF", "DOC", "DOCX"],
+                help="Supported: PDF, DOC, DOCX (max 25 MB)",
+                key="resume_upload",
+            )
+            if resume_file:
+                st.success(f"✅ {resume_file.name} ({resume_file.size / 1024:.1f} KB)")
+
+        with right:
             st.markdown("### 📋 Job Description")
             jd_method = st.radio(
                 "Input method:",
@@ -93,7 +92,7 @@ def _render_upload_area(analysis_mode: str):
             if jd_method == "Upload .txt File":
                 jd_file = st.file_uploader(
                     "Choose JD file (.txt only)",
-                    type=["txt"],
+                    type=["txt", "TXT"],
                     key="jd_upload",
                 )
                 if jd_file:
@@ -107,9 +106,16 @@ def _render_upload_area(analysis_mode: str):
                 )
                 if jd_text:
                     st.success(f"✅ {len(jd_text)} characters")
-        else:
-            st.markdown("### 📋 Job Description")
-            st.info("Switch to 'Job Description Comparison' mode to enable JD matching.")
+    else:
+        st.markdown("### 📄 Upload Resume")
+        resume_file = st.file_uploader(
+            "Choose your resume file (PDF or Word DOCX)",
+            type=["pdf", "doc", "docx", "PDF", "DOC", "DOCX"],
+            help="Supported: PDF, DOC, DOCX (max 25 MB)",
+            key="resume_upload",
+        )
+        if resume_file:
+            st.success(f"✅ {resume_file.name} ({resume_file.size / 1024:.1f} KB)")
 
     return resume_file, jd_file, jd_text
 
