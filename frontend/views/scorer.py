@@ -131,7 +131,7 @@ def _render_export_buttons(analysis: dict) -> None:
                 with st.spinner("Generating PDF on backend..."):
                     pdf_bytes = api_client.generate_pdf(
                         analysis,
-                        access_token=st.session_state["access_token"],
+                        access_token=st.session_state.get("access_token") or "guest",
                     )
                 st.session_state["scorer_pdf_bytes"] = pdf_bytes
             except requests.RequestException as exc:
@@ -191,10 +191,9 @@ def render() -> None:
             display_results_dashboard(st.session_state["scorer_analysis"])
         return
 
-    access_token = st.session_state.get("access_token")
-    if not access_token:
-        st.warning("⚠️ Sign in from the sidebar to analyze a resume.")
-        return
+    access_token = st.session_state.get("access_token") or "guest"
+    if access_token == "guest":
+        st.info("💡 Evaluating in Instant Guest Mode. (Sign in from the sidebar anytime to save your evaluation history).")
 
     _, mid, _ = st.columns([1, 2, 1])
     with mid:

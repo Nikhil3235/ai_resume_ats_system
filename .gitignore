@@ -58,6 +58,8 @@ Thumbs.db
 *.docx
 !frontend/assets/*.png
 !frontend/assets/*.svg
+generate_*.py
+
 
 # Logs
 *.log

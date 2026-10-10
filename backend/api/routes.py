@@ -112,11 +112,12 @@ async def analyze_resume(
     )
 
 
-    try:
-        from backend.database.supabase_db import save_analysis
-        await save_analysis(user_id, filename, result)
-    except Exception as exc:
-        logger.warning(f'History save failed (non-blocking): {exc}')
+    if user_id and user_id != 'guest':
+        try:
+            from backend.database.supabase_db import save_analysis
+            await save_analysis(user_id, filename, result)
+        except Exception as exc:
+            logger.warning(f'History save failed (non-blocking): {exc}')
 
     return response
 
