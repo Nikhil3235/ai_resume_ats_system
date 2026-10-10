@@ -282,20 +282,6 @@ Access the frontend at `http://localhost:8501` and interactive API docs at `http
 
 ---
 
-## 🎓 Academic Credentials
-
-This project was engineered as part of the **Third Year Computer Science & Engineering (TY CSE – Semester V)** curriculum:
-
-- **Student Name:** NIKHIL SHIVAJI MALI
-- **PRN:** 24055451242078
-- **Roll Number:** 03
-- **Class / Division:** TY CSE – Sem V / Div B
-- **Project Guide:** Mr. Vishal Jagtap
-- **Academic Year:** 2026 – 2027
-- **Domain:** Artificial Intelligence & Natural Language Processing (AI / NLP)
-
----
-
 ## 📄 License
 
 This project is licensed under the **MIT License** — feel free to use, modify, and distribute for academic and professional purposes.
@@ -303,5 +289,5 @@ This project is licensed under the **MIT License** — feel free to use, modify,
 ---
 
 <p align="center">
-  Built with ❤️ by <strong>Nikhil Shivaji Mali</strong> | Powered by <strong>FastAPI</strong>, <strong>Streamlit</strong>, <strong>Groq Cloud</strong>, and <strong>Supabase</strong>
+  Built with ❤️ by <strong>Nikhil Mali</strong> | Powered by <strong>FastAPI</strong>, <strong>Streamlit</strong>, <strong>Groq Cloud</strong>, and <strong>Supabase</strong>
 </p>
