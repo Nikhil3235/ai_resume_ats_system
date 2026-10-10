@@ -89,6 +89,11 @@ def _extract_pdf_hyperlinks(file_data: bytes) -> str:
     urls = []
     try:
         reader = PyPDF2.PdfReader(io.BytesIO(file_data))
+        if getattr(reader, 'is_encrypted', False):
+            try:
+                reader.decrypt('')
+            except Exception:
+                pass
         for page in reader.pages:
             if '/Annots' not in page:
                 continue
@@ -100,7 +105,6 @@ def _extract_pdf_hyperlinks(file_data: bytes) -> str:
                     action = annot.get('/A', {})
                     uri = action.get('/URI', '')
                     if uri and isinstance(uri, (str, bytes)):
-                        # PyPDF2 may return bytes for URI values
                         if isinstance(uri, bytes):
                             uri = uri.decode('utf-8', errors='ignore')
                         uri = uri.strip()
@@ -115,32 +119,103 @@ def _extract_pdf_hyperlinks(file_data: bytes) -> str:
 
 def _extract_pdf_with_pdfplumber(file_data: bytes) -> str:
     text = ''
-    with pdfplumber.open(io.BytesIO(file_data)) as pdf:
+    try:
+        pdf_ctx = pdfplumber.open(io.BytesIO(file_data), password='')
+    except Exception:
+        pdf_ctx = pdfplumber.open(io.BytesIO(file_data))
+
+    with pdf_ctx as pdf:
         for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
+            page_text = page.extract_text(layout=True)
+            if not page_text or not page_text.strip():
+                page_text = page.extract_text()
+            # Fallback 1: word-by-word extraction for non-standard character spacings
+            if not page_text or not page_text.strip():
+                words = page.extract_words()
+                if words:
+                    page_text = ' '.join(w.get('text', '') for w in words if w.get('text'))
+            # Fallback 2: table extraction if resume is structured in tables
+            if not page_text or not page_text.strip():
+                tables = page.extract_tables() or []
+                t_lines = []
+                for table in tables:
+                    for row in table:
+                        row_vals = [str(c).strip() for c in row if c and str(c).strip()]
+                        if row_vals:
+                            t_lines.append(' | '.join(row_vals))
+                if t_lines:
+                    page_text = '\n'.join(t_lines)
+
+            if page_text and page_text.strip():
                 text += page_text + '\n'
+
+    hyperlinks = _extract_pdf_hyperlinks(file_data)
+    if hyperlinks:
+        text = text.strip() + '\n' + hyperlinks
 
     if not text.strip():
         raise TextExtractionError(
             'pdfplumber extracted no text',
             user_message='No text could be extracted from the PDF.'
         )
-    
-    hyperlinks = _extract_pdf_hyperlinks(file_data)
-    if hyperlinks:
-        text = text.strip() + '\n' + hyperlinks
 
     return text.strip()
+
+
+def _extract_pdf_with_pdfminer(file_data: bytes) -> str:
+    try:
+        from pdfminer.high_level import extract_text as pdfminer_extract_text
+        text = pdfminer_extract_text(io.BytesIO(file_data), password='')
+        if not text or not text.strip():
+            text = pdfminer_extract_text(io.BytesIO(file_data))
+        if text and len(text.strip()) > 10:
+            hyperlinks = _extract_pdf_hyperlinks(file_data)
+            if hyperlinks:
+                text = text.strip() + '\n' + hyperlinks
+            return text.strip()
+    except Exception as exc:
+        log_warning(f'pdfminer extraction failed: {exc}', context='resume_parser')
+    raise TextExtractionError(
+        'pdfminer extracted no text',
+        user_message='No text could be extracted from the PDF.'
+    )
 
 
 def _extract_pdf_with_pypdf2(file_data: bytes) -> str:
     text = ''
     pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_data))
+    if getattr(pdf_reader, 'is_encrypted', False):
+        try:
+            pdf_reader.decrypt('')
+        except Exception:
+            try:
+                pdf_reader.decrypt(b'')
+            except Exception:
+                pass
+
     for page in pdf_reader.pages:
-        page_text = page.extract_text()
-        if page_text:
+        page_text = page.extract_text(orientations=(0, 90, 180, 270))
+        if not page_text or not page_text.strip():
+            page_text = page.extract_text()
+        # Visitor fallback to capture raw operands
+        if not page_text or not page_text.strip():
+            chunks = []
+            def visitor_fn(t, cm, tm, font_dict, font_size):
+                if t and t.strip():
+                    chunks.append(t.strip())
+            try:
+                page.extract_text(visitor_text=visitor_fn)
+                if chunks:
+                    page_text = ' '.join(chunks)
+            except Exception:
+                pass
+
+        if page_text and page_text.strip():
             text += page_text + '\n'
+
+    hyperlinks = _extract_pdf_hyperlinks(file_data)
+    if hyperlinks:
+        text = text.strip() + '\n' + hyperlinks
 
     if not text.strip():
         raise TextExtractionError(
@@ -148,33 +223,71 @@ def _extract_pdf_with_pypdf2(file_data: bytes) -> str:
             user_message='No text could be extracted from the PDF.'
         )
 
-    hyperlinks = _extract_pdf_hyperlinks(file_data)
-    if hyperlinks:
-        text = text.strip() + '\n' + hyperlinks
-
     return text.strip()
 
 
-def extract_text_from_pdf(file_data: bytes) -> str:
-    try: 
-        result, used_fallback=with_fallback(
-        _extract_pdf_with_pdfplumber, 
-        _extract_pdf_with_pypdf2, 
-        file_data, 
-        log_fallback=True
-    )
-    
-        if used_fallback:
-            log_info('PDF EXTRACTION succeded using the PyPDF2 fallback', context='resume_parser')
+def _extract_pdf_raw_stream_text(file_data: bytes) -> str:
+    import re
+    chunks = []
+    try:
+        reader = PyPDF2.PdfReader(io.BytesIO(file_data))
+        if getattr(reader, 'is_encrypted', False):
+            try:
+                reader.decrypt('')
+            except Exception:
+                pass
+        for page in reader.pages:
+            try:
+                contents = page.get_contents()
+                if contents:
+                    raw_data = contents.get_data() if hasattr(contents, 'get_data') else bytes(contents)
+                    matches = re.findall(rb'\(([^()]{2,})\)', raw_data)
+                    for m in matches:
+                        try:
+                            s = m.decode('utf-8', errors='ignore').strip()
+                            if len(s) > 1 and any(c.isalnum() for c in s):
+                                chunks.append(s)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    result = ' '.join(chunks).strip()
+    if len(result) > 20:
         return result
-        
-    except Exception as e:
-        log_error(e, context='extract_text_from_pdf')
-        raise FileParsingError(
-            'Failed to extract text from PDF using both pdfplumber and PyPDF2. '
-            'The PDF may be corrupted, password-protected, or contain only scanned images. '
-            'Please ensure it contains selectable text.'
-        ) from e
+    raise TextExtractionError(
+        'Raw stream extraction found insufficient text',
+        user_message='No text could be extracted from raw PDF streams.'
+    )
+
+
+def extract_text_from_pdf(file_data: bytes) -> str:
+    extraction_methods = [
+        ('pdfplumber', _extract_pdf_with_pdfplumber),
+        ('pdfminer', _extract_pdf_with_pdfminer),
+        ('PyPDF2', _extract_pdf_with_pypdf2),
+        ('raw_stream', _extract_pdf_raw_stream_text),
+    ]
+
+    last_error = None
+    for name, method in extraction_methods:
+        try:
+            extracted = method(file_data)
+            if extracted and len(extracted.strip()) > 10:
+                log_info(f'PDF extraction succeeded using {name} ({len(extracted)} chars)', context='resume_parser')
+                return extracted
+        except Exception as e:
+            last_error = e
+            log_warning(f'PDF extraction with {name} failed: {e}', context='resume_parser')
+
+    log_error(last_error, context='extract_text_from_pdf')
+    raise FileParsingError(
+        'Failed to extract selectable text from this PDF. '
+        'The file appears to be a scanned image or photo without embedded text. '
+        'Please ensure you upload an ATS-friendly PDF exported with text from Microsoft Word, Google Docs, or Canva.'
+    )
     
 
 def extract_text_from_docx(file_data: bytes) -> str:
